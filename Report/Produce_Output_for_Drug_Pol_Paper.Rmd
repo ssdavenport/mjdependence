@@ -1,18 +1,26 @@
-# anlaysis 2
+---
+title: "Output for MJ Dependence Study"
+date: "November 30, 2017"
+output: html_document
+---
 
+To produce this analysis, we will take a few steps.  
+
+First, we will load in a raw data file with select NSDUH variables, from 2002-2015.
+
+```{r setup, include=FALSE, echo = F}
+# Load data.
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      fig.height = 4, fig.width = 7)
 # warning: if you publish this, you should double check the calculation of symptoms/
 library(stats); library(tidyverse); options(scipen=9e4)
-data <- readRDS("data/NSDUH_for_drug_policy_allyears.rds") %>% 
-  mutate(plyr::mapvalues(x = t, from=c(1,2), to=c("2002-2004", "2013-2015")),
-         depndmrj = factor(depndmrj),
-         use_recency = factor(use_recency))
+data <- readRDS("../data/NSDUH_for_drug_policy_clean.rds")
 
+```
 
+```{r, include = T}
 #  First Step: Compute Trends and Charts ----------------------------------
-
-
 # analysis 1 - Prevalence of Dependence
-levels(data$depndmrj)
 # DND users only
 dependence_rates <- data %>% # (even bigger decline)
   # filter(use_recency %in% c("DND")) %>% 
@@ -24,13 +32,16 @@ dependence_rates <- data %>% # (even bigger decline)
           dplyr::summarise(diagnosis_rate  = weighted.mean(depndmrj=="Yes", wt)))
 
 # Rates by year
-dependence_rates %>% spread(use_recency, diagnosis_rate)
+dependence_rates %>% spread(use_recency, diagnosis_rate) %>% knitr::kable()
 
-# Rates by time period
-dependence_rates %>%
+# Rates by time period (pre- v post-)
+dependence_pre_post <- dependence_rates %>%
   group_by(t, use_recency) %>%
   dplyr::summarise(diagnosis_rate= mean(diagnosis_rate)) %>% 
-  spread(use_recency, diagnosis_rate)
+  spread(use_recency, diagnosis_rate) %>%
+  filter(!is.na(t)) %>% select(t, DND) %>%
+  spread(t, DND) %>%
+  dplyr::rename(`2002-4` = `1`, `2013-5` = `2`)
 
 dependence_rates %>%
   filter(use_recency=='DND') %>%
@@ -38,29 +49,28 @@ dependence_rates %>%
   geom_line() + geom_point(size=2) + 
   scale_y_continuous(labels=scales::percent_format(), limits=c(0, .3)) +
   scale_x_continuous(breaks=c(2002, 2005, 2010, 2015)) +
-  labs(title="Marijuana Dependence",
+  labs(title="DSM-IV Marijuana Dependence",
        subtitle="Prevalence Among Daily/Near-Daily Users",
        x='', y="") +
   ggthemes::theme_base() +
   theme(plot.margin=margin(.4,1,0,0, "cm"))
-
 
 # Analysis 2 - Prevalence of Symptoms
 
 # DND Only
 symptom_rates <- data %>% 
   filter(use_recency=="DND") %>%  
-  group_by(year, use_recency) %>%
+  group_by(year, t, use_recency) %>%
   dplyr::summarise(
     spent_time_getting_OR_getting_over = weighted.mean(spent_time_getting_OR_getting_over == "Yes", wt, na.rm=T),
-    kept_limits_AND_failed = weighted.mean(kept_limits_AND_failed == "Yes", wt, na.rm=T),
+    set_limits_BUT_failed = weighted.mean(set_limits_BUT_failed == "Yes", wt, na.rm=T),
     need_more_OR_less_effect = weighted.mean(need_more_OR_less_effect == "Yes", wt, na.rm=T),
-    unable_cut_down =  weighted.mean(unable_cut == "Yes", wt, na.rm=T),
-    mental_OR_physical_problems_AND_use = weighted.mean(mental_OR_physical_problems_AND_use == "Yes", wt, na.rm=T),
+    unable_cut_down = weighted.mean(unable_cut_down == "Yes", wt, na.rm=T),
+    mental_OR_physical_problems_AND_use = weighted.mean(use_despite_problems == "Yes", wt, na.rm=T),
     stop_important_activities = weighted.mean(stop_important_activities == "Yes", wt, na.rm=T)) %>%
   gather(symptom, rate, spent_time_getting_OR_getting_over:stop_important_activities) %>%
   dplyr::mutate(symptom = factor(ifelse(symptom=="spent_time_getting_OR_getting_over", "Lots of Time\nGetting, Using, or\nGetting Over Marijuana", 
-                          ifelse(symptom =="kept_limits_AND_failed", "Set Limits on Use\nbut Failed to Keep Them",
+                          ifelse(symptom =="set_limits_BUT_failed", "Set Limits on Use\nbut Failed to Keep Them",
                                  ifelse(symptom=="need_more_OR_less_effect", "Needed More for\nSame Effect",
                                         ifelse(symptom=="unable_cut_down", "Attempted to Reduce\nUse but Failed",
                                                ifelse(symptom=="mental_OR_physical_problems_AND_use", 
@@ -75,20 +85,31 @@ symptom_rates <- data %>%
                                     "Set Limits on Use\nbut Failed to Keep Them")))
 
 symptom_rates %>%
-  ggplot(aes(x=year, y=rate, color=symptom, group=symptom)) + geom_line() + geom_point(size=3) + 
+  ggplot(aes(x=year, y=rate, color=symptom, group=symptom)) + geom_line() + 
+  # geom_point(size=3) + 
   scale_y_continuous(labels=scales::percent_format(), limits=c(0, .8)) +
     scale_x_continuous(breaks=c(2002, 2005, 2010, 2015)) +
   labs(x="", title="Dependence Symptoms",
        subtitle="Prevalence Among Daily/Near-Daily Users",
        y="", color="  Symptom") +
-  ggthemes::theme_base()+
+  ggthemes::theme_base() +
+  theme(plot.margin=margin(.4,1,0,0, "cm")) +
   theme(legend.text = element_text(size = 10),
         legend.title = element_text(size = 14),
         axis.title.y = element_text(size = 14)) +
   guides(color=guide_legend(keyheight=1.5,   default.unit="cm"))
-  
 
+# Symptom pre-post
+symptom_pre_post <- symptom_rates %>%
+  filter(!is.na(t), use_recency=='DND') %>% select(t, symptom, rate) %>%
+  group_by(t, symptom) %>%
+  dplyr::summarise(rate= mean(rate)) %>% 
+  spread(t, rate)%>%
+  dplyr::rename(`2002-4` = `1`, `2013-5` = `2`)
 
+```
+
+```{r, include = F}
 # Second Step - Compute Significance --------------------------------------
 library(stargazer)
 # If you'd like to test for significance of a trend over time, rather than @ two points,
@@ -110,12 +131,13 @@ des <- svydesign(
   id = ~verep, 
   strata = ~ interaction(vestr, year),
   weights = ~wt, 
-  data=data %>%
-    mutate(depndmrj = factor(depndmrj, levels=c("No/Unknown", "Yes")),
-           dnd = factor(use_recency%in%'DND')), 
+  data = data, 
   nest = TRUE)
 
-# Add this (LaTeX) table to the word doc
+```
+
+# Modeling Dependence Rate Among DND
+```{r, results='asis'}
 # Now run a model on DND users that adjusts for covariates
 dndonly <- 
   svyglm(
@@ -123,47 +145,99 @@ dndonly <-
     design = des %>% subset(use_recency=='DND'),
     family = quasibinomial
   )
-summary( dndonly )
 
+stargazer(dndonly,
+          # dep.var.caption = "",
+          dep.var.labels = "MJ Dependence",
+          # column.labels=c("Activities","Problems", "Limits", 'Cut Down', "Time", "Tolerance"),
+          align=TRUE, type = "html",
+          ci=FALSE,
+          single.row = TRUE,
+          # omit=c('race', 'cat', 'sex', "Constant"),
+          keep.stat=c("rsq", 'adj.rsq', 'n'))
+```
+
+# Modeling Dependence Symptoms
+
+```{r, echo=FALSE, results='asis'}
 # Now do the same but for each symptom; grouped by p-value
 # p < -.001
 
 reg_activities <- svyglm(
-  I(stop_important_activities == levels(stop_important_activities)[1] ) ~ t + newrace2 + catag3 + educcat2 + irsex,
+  I(stop_important_activities == "Yes") ~ t + newrace2 + catag3 + educcat2 + irsex,
   design = des %>% subset(use_recency=='DND'),
   family = quasibinomial)
-reg_activities %>% summary
 
 reg_problems <- svyglm(
-  I(mental_OR_physical_problems_AND_use == levels(mental_OR_physical_problems_AND_use)[1] ) ~ t +
+  I(use_despite_problems == "Yes" ) ~ t +
     newrace2 + catag3 + educcat2 + irsex,
   design = des %>% subset(use_recency=='DND'),
   family = quasibinomial)
-reg_problems%>% summary
-
-stargazer(reg_activities, reg_problems, 
-          column.labels=c("Activities","Problems"), align=TRUE)
-
 
 # p < .05
-svyglm(
-  I(kept_limits_AND_failed == levels(kept_limits_AND_failed)[1] ) ~ t + newrace2 + catag3 + educcat2 + irsex,
+reg_limits <- svyglm(
+  I(set_limits_BUT_failed == "Yes" ) ~ t +
+    newrace2 + catag3 + educcat2 + irsex,
   design = des %>% subset(use_recency=='DND'),
-  family = quasibinomial) %>% summary
+  family = quasibinomial)
 
-svyglm(
-  I(unable_cut == levels(unable_cut)[1] ) ~ t + newrace2 + catag3 + educcat2 + irsex,
+reg_cutdown <- svyglm(
+  I(unable_cut_down == "Yes" ) ~ t + newrace2 + catag3 + educcat2 + irsex,
   design = des %>% subset(use_recency=='DND'),
-  family = quasibinomial) %>% summary
+  family = quasibinomial)
 
-svyglm(
-  I(spent_time_getting_OR_getting_over == levels(spent_time_getting_OR_getting_over)[1] ) ~ t + newrace2 + catag3 + educcat2 + irsex,
+reg_time <- svyglm(
+  I(spent_time_getting_OR_getting_over == "Yes" ) ~ t + newrace2 + catag3 + educcat2 + irsex,
   design = des %>% subset(use_recency=='DND'),
-  family = quasibinomial) %>% summary
+  family = quasibinomial)
 
 # p>0.1
-svyglm(
-  I(need_more_OR_less_effect == levels(need_more_OR_less_effect)[1] ) ~ t + newrace2 + catag3 + educcat2 + irsex,
+reg_tolerance <- svyglm(
+  I(need_more_OR_less_effect == "Yes" ) ~ t + newrace2 + catag3 + educcat2 + irsex,
   design = des %>% subset(use_recency=='DND'),
-  family = quasibinomial) %>% summary
+  family = quasibinomial)
 
+stargazer(reg_activities, reg_problems, reg_limits, reg_cutdown, reg_time, reg_tolerance,
+          dep.var.caption = "",
+          dep.var.labels = rep('', 6),
+          column.labels=c("Activities","Problems", "Limits", 'Cut Down', "Time", "Tolerance"),
+          align=TRUE, type = "html",
+          ci=FALSE,
+          model.numbers = F,
+          omit=c('race', 'cat', 'sex', "Constant"),
+          keep.stat=c("rsq", "n", "adj.rsq"))
+          
+```
+
+# Summary Table
+
+This summarizes the pre-post measurements for all outcomes and provides levels of significance.
+
+```{r}
+pre_post_summary <- dependence_pre_post %>% 
+  mutate(symptom="DSM-IV MJ Dependence",
+         p = summary(dndonly)$coef[2, 4]) %>%
+  rbind(
+    symptom_pre_post %>% 
+      mutate(p = c(
+        summary(reg_time)$coef[2, 4],
+        summary(reg_tolerance)$coef[2, 4],
+        summary(reg_cutdown)$coef[2, 4],
+        summary(reg_problems)$coef[2, 4],
+        summary(reg_activities)$coef[2, 4],
+        summary(reg_limits)$coef[2, 4]))) %>%
+  dplyr::rename(Condition = symptom) %>%
+  mutate(
+    Sig = cut(p, breaks=c(0, 0.01, 0.05, 0.1, 1),
+                       labels=c("***", "**", "*", ".")),
+    `2002-4` = round(100*`2002-4`, 1),
+    `2013-5` = round(100*`2013-5`, 1),
+    Condition = stringr::str_replace_all(Condition, "\n", " "),
+    Change = `2013-5` - `2002-4`) %>%
+  arrange(Change) %>%
+  select(Condition, `2002-4`, `2013-5`, Change, Sig)
+```
+
+```{r}
+knitr::kable(pre_post_summary)
+```

@@ -230,5 +230,3 @@ all$abusemrj <- remove_parens(all$abusemrj)
 # saveRDS(all %>% filter(year%in%c(2002:2004, 2012:2014)), "data/NSDUH_for_drug_policy_raw.rds")
 saveRDS(all, "data/NSDUH_for_drug_policy_raw.rds")
 rm(pre); rm(post)
-
-

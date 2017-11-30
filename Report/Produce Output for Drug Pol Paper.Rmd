@@ -14,88 +14,7 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
                       fig.height = 4, fig.width = 7)
 # warning: if you publish this, you should double check the calculation of symptoms/
 library(stats); library(tidyverse); options(scipen=9e4)
-nsduh <- readRDS("data/NSDUH_for_drug_policy_raw.rds") %>%
-  mutate(plyr::mapvalues(x = t, from=c(1,2), to=c("2002-2004", "2013-2015")),
-         depndmrj = factor(depndmrj))
-```
-
-Then, we will clean variables regarding use recency and DSM-IV Marijuana Dependence.
-
-```{r}
-data <- nsduh %>% 
-  dplyr::transmute(
-    
-    ##### Variables related to survey structure
-    wt=analwt_c,
-    verep=verep,
-    vestr=vestr,
-    year=year,
-    t=t,
-    
-    ##### Demographic and Use variables
-    newrace2=newrace2,
-    catag3=catag3,
-    educcat2=educcat2,
-    irsex=irsex,
-    use_recency = ifelse(
-      irmjrc %in% levels(irmjrc)[4], "Never", ifelse(
-        irmjrc %in% levels(irmjrc)[3], "Lifetime", ifelse(
-          irmjrc %in% levels(irmjrc)[2], "PY", ifelse(
-            irmjrc %in% levels(irmjrc)[1] & mjday30a <= 20, "PM", ifelse(
-              mjday30a > 20, "DND", NA))))),
-    dnd = use_recency == "DND",
-    
-    ##### Dependence variables
-    depndmrj = depndmrj,
-    
-    ##### Symptoms (note different rules for each)
-    ### Simple:
-    stop_important_activities = 
-      factor(mrjlsact, levels=c("(1) Yes", "(2) No"), labels=c("Yes", "No")),
-    ### Any one of two:
-    # Lots of time spent getting, using, or getting over
-    spent_time_getting_OR_getting_over = 
-      ifelse(mrjlottm %in% "(1) Yes" | mrjgtovr %in% "(1) Yes", "Yes", 
-             ifelse(mrjlottm %in% "(2) No" | mrjgtovr %in% "(2) No", "No", NA)) %>%
-      factor(levels=c("Yes", "No")),
-    # Needing more or getting less effect
-    need_more_OR_less_effect = 
-      ifelse(mrjndmor %in%  "(1) Yes" | mrjlsefx %in%  "(1) Yes", "Yes",
-             ifelse(mrjndmor %in% "(2) No" | mrjlsefx %in% "(2) No", "No", NA)) %>%
-      factor(levels=c("Yes", "No")),
-    ### Conditional (generates NAs if first condition not met)
-    set_limits_BUT_failed = 
-      # Numerator: Said they exceeded limits
-      ifelse(mrjkplmt %in% "(2) Often used more than intended", "Yes",
-             # Denominator: Answered Q about whether they tried limits
-             ifelse(mrjlimit %in% c("(1) Yes", "(2) No"), "No", NA)) %>%
-      factor(levels=c("Yes", "No")),
-    set_limits_BUT_failed_NAs = factor(mrjkplmt, levels=levels(mrjkplmt), labels=c("No", "Yes")),
-        # No if "Usually kept to limits set"
-        # Yes if "Often used more than intended"
-    unable_cut_down = 
-      # Numerator: said they were not able to make an attempt to cut down.
-      ifelse(mrjcutev %in% "(2) No", "Yes",
-             # Denominator: answered Q about whether they tried to cut
-             ifelse(mrjcutdn %in% c("(1) Yes", "(2) No"), "No", NA)) %>%
-      factor(levels=c("Yes", "No")),
-    unable_cut_down_NAS = factor(mrjcutev, levels=levels(mrjcutev), labels=c("No", "Yes")),
-        # No if "able to cut down or stop using marijuana every time you wanted to or tried to"
-        # Yes if "unable..."
-    use_despite_problems = 
-      # Numerator: said they continued use despite a mental/emo or phys problem
-      ifelse(mrjemctd %in% "(1) Yes" | mrjphctd %in% "(1) Yes", "Yes",
-             # Denominator: answered either Q about whether they had problems
-             ifelse(mrjemopb %in% c("(1) Yes", "(2) No") | mrjphlpb  %in% c("(1) Yes", "(2) No"), "No", NA)) %>%
-      factor(levels=c("Yes", "No")),
-    use_despite_problems_NAs = 
-      # this is a conditional based on TWO questions.
-      ifelse(mrjemctd %in% "(1) Yes" | mrjphctd %in% "(1) Yes", "Yes",
-             ifelse(mrjemctd %in% "(2) No" | mrjphctd %in% "(2) No", "No", NA)) %>%
-      factor(levels=c("Yes", "No")))
-        # Yes if reported to continue use despite mental/emotional or physical problems
-        # No if reported to stop use in face of either problem.
-        # NA if did not report either problem
+data <- readRDS("../data/NSDUH_for_drug_policy_clean.rds")
 ```
 
 ```{r, include = T}
@@ -112,7 +31,7 @@ dependence_rates <- data %>% # (even bigger decline)
           dplyr::summarise(diagnosis_rate  = weighted.mean(depndmrj=="Yes", wt)))
 
 # Rates by year
-dependence_rates %>% spread(use_recency, diagnosis_rate)
+dependence_rates %>% spread(use_recency, diagnosis_rate) %>% knitr::kable()
 
 # Rates by time period (pre- v post-)
 dependence_pre_post <- dependence_rates %>%
@@ -134,8 +53,11 @@ dependence_rates %>%
        x='', y="") +
   ggthemes::theme_base() +
   theme(plot.margin=margin(.4,1,0,0, "cm"))
+```
 
-# Analysis 2 - Prevalence of Symptoms
+
+# Prevalence of Dependence Symptoms
+```{r}
 
 # DND Only
 symptom_rates <- data %>% 
@@ -173,11 +95,11 @@ symptom_rates %>%
        subtitle="Prevalence Among Daily/Near-Daily Users",
        y="", color="  Symptom") +
   ggthemes::theme_base() +
-  theme(plot.margin=margin(.4,1,0,0, "cm")) +
-  theme(legend.text = element_text(size = 10),
+  theme(plot.margin=margin(.3,.6,0,0, "cm")) +
+  theme(legend.text = element_text(size = 9),
         legend.title = element_text(size = 14),
         axis.title.y = element_text(size = 14)) +
-  guides(color=guide_legend(keyheight=1.5,   default.unit="cm"))
+  guides(color=guide_legend(keyheight=1.3, default.unit="cm"))
 
 # Symptom pre-post
 symptom_pre_post <- symptom_rates %>%
