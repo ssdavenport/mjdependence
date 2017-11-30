@@ -1,0 +1,14 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Rapp.history
+*.swp
+.DS_Store
+*.gdoc
+*.docx
+.html
+*.pdf
+*.rda
+*.rds
+*.ini
