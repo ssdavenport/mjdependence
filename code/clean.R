@@ -1,8 +1,93 @@
 # Cleaning data.
 library(tidyverse)
 
-data <- readRDS("data/NSDUH_for_drug_policy_raw.rds")
+readRDS("data/NSDUH_for_drug_policy_raw.rds") %>%
+  mutate(plyr::mapvalues(x = t, from=c(1,2), to=c("2002-2004", "2013-2015")),
+         depndmrj = factor(depndmrj)) %>% 
+  
+    dplyr::transmute(
+    
+    ##### Variables related to survey structure
+    wt=analwt_c,
+    verep=verep,
+    vestr=vestr,
+    year=year,
+    t=t,
+    
+    ##### Demographic and Use variables
+    newrace2=newrace2,
+    catag3=catag3,
+    educcat2=educcat2,
+    irsex=irsex,
+    use_recency = ifelse(
+      irmjrc %in% levels(irmjrc)[4], "Never", ifelse(
+        irmjrc %in% levels(irmjrc)[3], "Lifetime", ifelse(
+          irmjrc %in% levels(irmjrc)[2], "PY", ifelse(
+            irmjrc %in% levels(irmjrc)[1] & mjday30a <= 20, "PM", ifelse(
+              mjday30a > 20, "DND", NA))))),
+    dnd = use_recency == "DND",
+    
+    ##### Dependence variables
+    depndmrj = depndmrj,
+    
+    ##### Symptoms (note different rules for each)
+    ### Simple:
+    stop_important_activities = 
+      factor(mrjlsact, levels=c("(1) Yes", "(2) No"), labels=c("Yes", "No")),
+    ### Any one of two:
+    # Lots of time spent getting, using, or getting over
+    spent_time_getting_OR_getting_over = 
+      ifelse(mrjlottm %in% "(1) Yes" | mrjgtovr %in% "(1) Yes", "Yes", 
+             ifelse(mrjlottm %in% "(2) No" | mrjgtovr %in% "(2) No", "No", NA)) %>%
+      factor(levels=c("Yes", "No")),
+    # Needing more or getting less effect
+    need_more_OR_less_effect = 
+      ifelse(mrjndmor %in%  "(1) Yes" | mrjlsefx %in%  "(1) Yes", "Yes",
+             ifelse(mrjndmor %in% "(2) No" | mrjlsefx %in% "(2) No", "No", NA)) %>%
+      factor(levels=c("Yes", "No")),
+    ### Conditional (generates NAs if first condition not met)
+    set_limits_BUT_failed = 
+      # Numerator: Said they exceeded limits
+      ifelse(mrjkplmt %in% "(2) Often used more than intended", "Yes",
+             # Denominator: Answered Q about whether they tried limits
+             ifelse(mrjlimit %in% c("(1) Yes", "(2) No"), "No", NA)) %>%
+      factor(levels=c("Yes", "No")),
+    set_limits_BUT_failed_NAs = factor(mrjkplmt, levels=levels(mrjkplmt), labels=c("No", "Yes")),
+    # No if "Usually kept to limits set"
+    # Yes if "Often used more than intended"
+    unable_cut_down = 
+      # Numerator: said they were not able to make an attempt to cut down.
+      ifelse(mrjcutev %in% "(2) No", "Yes",
+             # Denominator: answered Q about whether they tried to cut
+             ifelse(mrjcutdn %in% c("(1) Yes", "(2) No"), "No", NA)) %>%
+      factor(levels=c("Yes", "No")),
+    unable_cut_down_NAS = factor(mrjcutev, levels=levels(mrjcutev), labels=c("No", "Yes")),
+    # No if "able to cut down or stop using marijuana every time you wanted to or tried to"
+    # Yes if "unable..."
+    use_despite_problems = 
+      # Numerator: said they continued use despite a mental/emo or phys problem
+      ifelse(mrjemctd %in% "(1) Yes" | mrjphctd %in% "(1) Yes", "Yes",
+             # Denominator: answered either Q about whether they had problems
+             ifelse(mrjemopb %in% c("(1) Yes", "(2) No") | mrjphlpb  %in% c("(1) Yes", "(2) No"), "No", NA)) %>%
+      factor(levels=c("Yes", "No")),
+    use_despite_problems_NAs = 
+      # this is a conditional based on TWO questions.
+      ifelse(mrjemctd %in% "(1) Yes" | mrjphctd %in% "(1) Yes", "Yes",
+             ifelse(mrjemctd %in% "(2) No" | mrjphctd %in% "(2) No", "No", NA)) %>%
+      factor(levels=c("Yes", "No"))) %>% 
+# Yes if reported to continue use despite mental/emotional or physical problems
+# No if reported to stop use in face of either problem.
+# NA if did not report either problem
 
+  mutate(
+    symptoms_dep = (spent_time_getting_OR_getting_over=="Yes") + (kept_limits_AND_failed== "Yes") +
+    (need_more_OR_less_effect=="Yes") + (unable_cut=="Yes") + (mental_OR_physical_problems_AND_use == "Yes") +
+    (stop_important_activities == "(1) Yes")) %>%
+  
+  # Save this to a RDS file
+  saveRDS("data/NSDUH_for_drug_policy_clean.rds")
+
+getwd()
 # Rename variables --------------------------------------------------------
 
 # MRJLOTTM
@@ -59,144 +144,5 @@ data <- readRDS("data/NSDUH_for_drug_policy_raw.rds")
 # MRJFMCTD
 # Did you continue to use marijuana or hashish even though you thought it caused problems with family or friends?
 
-data <- data %>% 
-  dplyr::rename(
-                # Dependence criteria
-                  # Solo
-                stop_important_activities = mrjlsact,
-                
-                  # compound: either one
-                spent_time_getting_using = mrjlottm,
-                spent_time_over = mrjgtovr,
-                
-                  # compound: either one qualifies
-                need_more = mrjndmor, 
-                less_effect = mrjlsefx,
-                
-                  # compound: keep and set (only not-keep is needed)
-                keep_limits = mrjkplmt,
-                set_limits = mrjlimit,
-                
-                  # compound: Want and able (only not-able is needed)
-                want_cut_down = mrjcutdn,
-                able_cut_down = mrjcutev,
-               
-                  # compound: only use despite qualifies
-                mental_problems = mrjemopb,
-                use_despite_mental_problems = mrjemctd,
-                
-                # Abuse criteria
-                   # compound
-                physical_problems = mrjphlpb,
-                use_despite_physical_problems = mrjphctd,
-                   # compound
-                family_problems = mrjfmfpb,
-                use_despite_family_problems = mrjfmctd,
-                
-                serious_problems = mrjserpb,
-                dangerous_activities = mrjpdang,
-                legal_trouble = mrjlawtr,
-               wt=analwt_c)
 
 
-
-# Add additional columns --------------------------------------------------
-
-# Add columns to easily show user type.
-data <- data %>% dplyr::mutate(
-  use_recency = ifelse(
-    irmjrc %in% levels(irmjrc)[4], "Never", ifelse(
-      irmjrc %in% levels(irmjrc)[3], "Lifetime", ifelse(
-        irmjrc %in% levels(irmjrc)[2], "PY", ifelse(
-          irmjrc %in% levels(irmjrc)[1] & mjday30a <= 20, "PM", ifelse(
-            mjday30a > 20, "DND", NA))))),
-  ever = use_recency %in% c("Lifetime", "PY", "PM", "DND"),
-  py = use_recency %in% c("PY", "PM", "DND"),
-  pm = use_recency %in% c("PM", "DND"),
-  dnd = use_recency == "DND")
-
-# Clean the dependence criteria to remove NAs (yes is yes, DK is no)
-
-
-
-# Make new variables for compound symptom-criteria
-data <- data %>% 
-  mutate(family_problems_AND_use = ifelse(
-    use_despite_family_problems %in% "(1) Yes", "Yes", ifelse(
-      use_despite_family_problems %in% "(2) No", "No", NA)) %>%
-      factor(levels=c("Yes", "No")))
-
-data <- data %>% 
-  mutate(mental_problems_AND_use = ifelse(
-    use_despite_mental_problems %in% "(1) Yes", "Yes", ifelse(
-      use_despite_mental_problems %in% "(2) No", "No", NA)) %>%
-      factor(levels=c("Yes", "No")))
-
-data <- data %>% 
-  mutate(physical_problems_AND_use = ifelse(
-    use_despite_physical_problems %in% "(1) Yes", "Yes", ifelse(
-      !use_despite_physical_problems %in% "(2) No", "No", NA)) %>%
-      factor(levels=c("Yes", "No")))
-
-
-# Dependence criteria: Unable to keep limits
-data <- data %>% 
-  mutate(kept_limits_AND_failed = ifelse(
-    keep_limits %in% "(2) Often used more than intended", "Yes", ifelse(
-      keep_limits %in% "(1) Usually kept to the limits set", "No", ifelse(
-        !is.na(set_limits), "No", NA))) %>%
-      factor(levels=c("Yes", "No")))
-
-
-# Dependence criteria: needed more or less effect
-# if either condition has been answered yes, I'll call it a yes
-data <- data %>% 
-  mutate(need_more_OR_less_effect = ifelse(
-    need_more %in%  "(1) Yes" | less_effect %in%  "(1) Yes", "Yes", ifelse(
-      need_more %in% "(2) No" | less_effect %in% "(2) No", "No", NA)) %>%
-      factor(levels=c("Yes", "No")))
-
-
-# Dependence criteria: spent time getting/using OR getting over.
-# if either condition has been answered yes, I'll call it a yes
-data <- data %>% 
-  mutate(spent_time_getting_OR_getting_over = ifelse(
-    spent_time_getting_using %in% "(1) Yes" | spent_time_over %in% "(1) Yes", "Yes", 
-    ifelse(spent_time_getting_using %in% "(2) No" | spent_time_over %in% "(2) No", "No", 
-           NA)) %>%
-      factor(levels=c("Yes", "No")))
-
-
-# Dependence criteria: continued use despite mental OR physical problems
-data <- data %>% 
-  mutate(mental_OR_physical_problems_AND_use = ifelse(
-    mental_problems_AND_use %in% "Yes" | physical_problems_AND_use %in% "Yes", 
-    "Yes", ifelse(
-      mental_problems_AND_use %in% levels(mental_problems_AND_use[2]) | physical_problems_AND_use %in% levels(physical_problems_AND_use[2]), 
-      "No", NA)) %>%
-      factor(levels=c("Yes", "No")))
-
-# Dependence criteria: Wanted and able to cut down
-data <- data %>% 
-  mutate(unable_cut = ifelse(
-    want_cut_down %in% "(2) No", "No", # Never wanted to cut
-    ifelse(able_cut_down %in% "(2) No", "Yes",
-           ifelse(able_cut_down %in% "(1) Yes", "No", NA))) %>% # tried; unable to cut.
-      factor(levels=c("Yes", "No")))
-
-# Dependence criteria: Stop important activities
-data <- data %>% 
-  mutate(stop_important_activities = ifelse(
-    stop_important_activities %in% "(2) No", "No", # Never wanted to cut
-    ifelse(stop_important_activities %in% "(1) Yes", "Yes", NA)) %>% # tried; unable to cut.
-      factor(levels=c("Yes", "No")))
-
-# Add counts of symptoms
-data <- data %>% mutate(
-  symptoms_dep = (spent_time_getting_OR_getting_over=="Yes") + (kept_limits_AND_failed== "Yes") +
-    (need_more_OR_less_effect=="Yes") + (unable_cut=="Yes") + (mental_OR_physical_problems_AND_use == "Yes") +
-    (stop_important_activities == "(1) Yes"),
-  symptoms_abuse = (serious_problems == "(1) Yes" ) + ( dangerous_activities == "(1) Yes" ) + 
-    (legal_trouble == "(1) Yes" ) + (family_problems_AND_use =="Yes"))
-
-saveRDS(data, "data/NSDUH_for_drug_policy_allyears.rds")
