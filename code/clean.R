@@ -78,11 +78,23 @@ readRDS("data/NSDUH_for_drug_policy_raw.rds") %>%
 # Yes if reported to continue use despite mental/emotional or physical problems
 # No if reported to stop use in face of either problem.
 # NA if did not report either problem
+<<<<<<< HEAD
   
   # Save this to a RDS file
   saveRDS("data/NSDUH_for_drug_policy_clean.rds")
 
+=======
 
+  mutate(
+    symptoms_dep = (spent_time_getting_OR_getting_over=="Yes") + (kept_limits_AND_failed== "Yes") +
+    (need_more_OR_less_effect=="Yes") + (unable_cut=="Yes") + (mental_OR_physical_problems_AND_use == "Yes") +
+    (stop_important_activities == "(1) Yes")) %>%
+  
+  # Save this to a RDS file
+  saveRDS("data/NSDUH_for_drug_policy_clean.rds")
+>>>>>>> a64f5c96b11980b49017181363c9bd300af397b4
+
+getwd()
 # Rename variables --------------------------------------------------------
 
 # MRJLOTTM
